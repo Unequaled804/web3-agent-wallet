@@ -15,8 +15,8 @@ export function registerSimulateIntent(server: McpServer, ctx: WalletContext) {
     ].join(" "),
     SimulateIntentInputShape,
     async ({ intent_id }) => {
-      const intent = ctx.intentStore.get(intent_id);
-      if (!intent) {
+      const record = ctx.intentStore.getRecord(intent_id);
+      if (!record) {
         return {
           isError: true,
           content: [
@@ -36,13 +36,32 @@ export function registerSimulateIntent(server: McpServer, ctx: WalletContext) {
       }
 
       const [simulation, validation] = await Promise.all([
-        simulateIntent(intent, ctx.publicClient),
-        dynamicValidate(intent, ctx.publicClient),
+        simulateIntent(record.intent, ctx.publicClient),
+        dynamicValidate(record.intent, ctx.publicClient),
       ]);
+
+      const killSwitch = ctx.killSwitch.snapshot();
+      const verdict =
+        record.status === "rejected"
+          ? "rejected_by_policy"
+          : record.status === "pending_approval"
+            ? "awaiting_human_approval"
+            : record.status === "broadcasted" || record.status === "confirmed"
+              ? "already_executed"
+              : !simulation.success || !validation.ok
+                ? "blocked"
+                : killSwitch.enabled
+                  ? "blocked_by_kill_switch"
+                  : "ready_to_execute";
 
       const payload = {
         intent_id,
-        request_id: intent.request_id,
+        request_id: record.intent.request_id,
+        status: record.status,
+        status_reason: record.status_reason,
+        policy: record.policy,
+        queued_for_approval: ctx.approvalQueue.has(intent_id),
+        kill_switch: killSwitch,
         simulation: {
           success: simulation.success,
           revert_reason: simulation.revert_reason,
@@ -56,11 +75,11 @@ export function registerSimulateIntent(server: McpServer, ctx: WalletContext) {
           estimated_fee_wei: validation.estimated_fee_wei?.toString(),
           total_cost_wei: validation.total_cost_wei?.toString(),
         },
-        verdict: simulation.success && validation.ok ? "ready_to_execute" : "blocked",
+        verdict,
       };
 
       return {
-        isError: !(simulation.success && validation.ok),
+        isError: verdict !== "ready_to_execute",
         content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
       };
     },

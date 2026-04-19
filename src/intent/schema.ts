@@ -87,6 +87,24 @@ export const SimulateIntentInputShape = {
     .describe("Intent id returned by wallet_create_intent."),
 } as const;
 
+export const ExecuteIntentInputShape = {
+  intent_id: z
+    .string()
+    .min(1)
+    .describe("Intent id returned by wallet_create_intent."),
+  wait_for_receipt: z
+    .boolean()
+    .default(true)
+    .describe("Wait for transaction receipt before returning."),
+  receipt_timeout_seconds: z
+    .number()
+    .int()
+    .min(5)
+    .max(300)
+    .default(60)
+    .describe("Timeout when waiting for transaction receipt."),
+} as const;
+
 // ---------- Normalised Intent (server-side representation) ----------
 
 export type Intent = {

@@ -12,16 +12,16 @@ import {
 } from "../../intent/schema.js";
 import { dynamicValidate } from "../../intent/validator.js";
 import { humanize } from "../../intent/humanize.js";
+import { snapshotValidationReport } from "../../intent/store.js";
 
 export function registerCreateIntent(server: McpServer, ctx: WalletContext) {
   server.tool(
     "wallet_create_intent",
     [
       "Propose a structured transaction Intent. The wallet validates it (address",
-      "checksum, balance, fee) but does NOT sign or broadcast. Returns an",
-      "intent_id that later tools (simulate_intent, execute_intent) reference.",
-      "Always read back the human_summary and confirm with the user before",
-      "calling execute_intent for non-trivial amounts.",
+      "checksum, balance, fee) and runs policy checks, but does NOT sign or",
+      "broadcast. Returns an intent_id plus status/policy. Pending intents",
+      "must be approved via wallet_review_intent before execute_intent in M3.",
     ].join(" "),
     CreateIntentInputShape,
     async (rawInput) => {
@@ -60,24 +60,55 @@ export function registerCreateIntent(server: McpServer, ctx: WalletContext) {
         note: input.note,
       };
 
-      const stored = ctx.intentStore.create(intent);
-      const report = await dynamicValidate(stored, ctx.publicClient);
-      const summary = humanize(stored, report);
+      const record = ctx.intentStore.create(intent);
+      const report = await dynamicValidate(record.intent, ctx.publicClient);
+      const summary = humanize(record.intent, report);
+      const policy = ctx.policyEngine.evaluate(record.intent, report);
+      const updated = ctx.intentStore.setPolicyEvaluation(
+        record.intent.intent_id,
+        policy,
+        snapshotValidationReport(report),
+      );
+
+      if (!updated) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: "intent_not_found_or_expired",
+                  intent_id: record.intent.intent_id,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
+
+      if (updated.status === "pending_approval") {
+        ctx.approvalQueue.enqueue(updated.intent.intent_id);
+      } else {
+        ctx.approvalQueue.dequeue(updated.intent.intent_id);
+      }
 
       const payload = {
-        intent_id: stored.intent_id,
-        request_id: stored.request_id,
+        intent_id: updated.intent.intent_id,
+        request_id: updated.intent.request_id,
         intent: {
-          chain_id: stored.chain_id,
-          action: stored.action,
-          from: stored.from,
-          to: stored.to,
-          value_wei: stored.value_wei.toString(),
-          value_display: stored.value_display,
-          data: stored.data,
-          created_at: stored.created_at,
-          expires_at: stored.expires_at,
-          note: stored.note,
+          chain_id: updated.intent.chain_id,
+          action: updated.intent.action,
+          from: updated.intent.from,
+          to: updated.intent.to,
+          value_wei: updated.intent.value_wei.toString(),
+          value_display: updated.intent.value_display,
+          data: updated.intent.data,
+          created_at: updated.intent.created_at,
+          expires_at: updated.intent.expires_at,
+          note: updated.intent.note,
         },
         validation: {
           ok: report.ok,
@@ -87,11 +118,15 @@ export function registerCreateIntent(server: McpServer, ctx: WalletContext) {
           estimated_fee_wei: report.estimated_fee_wei?.toString(),
           total_cost_wei: report.total_cost_wei?.toString(),
         },
+        status: updated.status,
+        status_reason: updated.status_reason,
+        policy: updated.policy,
+        queued_for_approval: ctx.approvalQueue.has(updated.intent.intent_id),
         human_summary: summary,
       };
 
       return {
-        isError: !report.ok,
+        isError: !report.ok || updated.status === "rejected",
         content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
       };
     },

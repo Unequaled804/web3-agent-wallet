@@ -10,8 +10,8 @@ See [`docs/answers.md`](docs/answers.md) for the full design (user personas, key
 
 - [x] **M0** — MCP server skeleton, encrypted keystore, `wallet_get_address`, `wallet_get_balance`
 - [x] **M1** — Intent layer: structured Intent, static+dynamic validation, human summary, eth_call simulation
-- [ ] M2 — Policy engine + approval queue + kill switch
-- [ ] M3 — Signing & broadcasting
+- [x] **M2** — Policy engine + approval queue + kill switch
+- [x] **M3** — Signing & broadcasting (`wallet_execute_intent`)
 - [ ] M4 — Audit log & history query
 - [ ] M5 — Session keys, ERC20, UI
 
@@ -56,16 +56,22 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop; you should see four tools in the picker:
+Restart Claude Desktop; you should see these tools in the picker:
 
 | Tool | Purpose | Side effects |
 | --- | --- | --- |
 | `wallet_get_address` | Wallet EOA address | None |
 | `wallet_get_balance` | Sepolia ETH balance | None |
-| `wallet_create_intent` | Propose a transaction with explicit amount+unit; validates checksum, balance, gas | None (no signature) |
-| `wallet_simulate_intent` | Dry-run a stored intent via `eth_call` | None |
+| `wallet_create_intent` | Propose a transaction; runs validation + policy decision (`approved` / `pending_approval` / `rejected`) | None (no signature) |
+| `wallet_get_intent_status` | Query policy/approval status for a specific intent | None |
+| `wallet_simulate_intent` | Dry-run a stored intent via `eth_call`, with latest validation snapshot | None |
+| `wallet_list_approvals` | List intents waiting for human approval | None |
+| `wallet_review_intent` | Approve or reject a pending intent | Updates in-memory intent status |
+| `wallet_execute_intent` | Sign+broadcast an `approved` intent; can wait for receipt | Broadcasts transaction on Sepolia |
+| `wallet_get_kill_switch` | Read kill-switch state + policy config | None |
+| `wallet_set_kill_switch` | Engage/release emergency kill switch | Blocks new intents while engaged |
 
-`wallet_create_intent` returns an `intent_id` plus a `human_summary` that the Agent should read back to the user. Signing and broadcasting land in M3.
+`wallet_create_intent` returns `intent_id`, `human_summary`, and policy status. Intents in `pending_approval` must pass `wallet_review_intent`, then `wallet_execute_intent` performs final preflight checks before signing/broadcasting.
 
 ## Dev
 
@@ -82,9 +88,12 @@ src/
 ├── mcp/          MCP server + tool definitions
 ├── intent/       zod schema, static+dynamic validator, humanize, in-memory store
 ├── chain/        viem clients (Sepolia) + eth_call simulator
+├── policy/       policy engine (thresholds, allow/block list, risk grading)
+├── approval/     in-memory human approval queue
+├── killswitch/   emergency stop state
 ├── signer/       encrypted keystore
 ├── config.ts     env loading via zod
-└── context.ts    shared runtime context (account + public client + intent store)
+└── context.ts    shared runtime context (store + policy + queue + kill switch)
 ```
 
-Later milestones will add `policy/`, `audit/`, `approval/`, `killswitch/`.
+Later milestones will add `audit/`, `execution/`, and session-key features.
