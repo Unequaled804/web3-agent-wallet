@@ -13,7 +13,7 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
       "Performs a final simulation + dynamic validation before sending.",
     ].join(" "),
     ExecuteIntentInputShape,
-    async ({ intent_id, wait_for_receipt, receipt_timeout_seconds }) => {
+    async ({ agent_id, intent_id, wait_for_receipt, receipt_timeout_seconds }) => {
       const record = ctx.intentStore.getRecord(intent_id);
       if (!record) {
         await ctx.auditStore.logEvent({
@@ -38,6 +38,66 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
             },
           ],
         };
+      }
+
+      const binding = ctx.bindingManager.getState();
+      if (binding.bound_agent_id) {
+        if (!agent_id) {
+          await ctx.auditStore.logEvent({
+            event_type: "intent_execute_blocked",
+            intent_id,
+            status: "rejected",
+            payload: {
+              error: "agent_id_required_when_bound",
+              bound_agent_id: binding.bound_agent_id,
+            },
+          });
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    error: "agent_id_required_when_bound",
+                    bound_agent_id: binding.bound_agent_id,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+        if (agent_id !== binding.bound_agent_id) {
+          await ctx.auditStore.logEvent({
+            event_type: "intent_execute_blocked",
+            intent_id,
+            status: "rejected",
+            payload: {
+              error: "agent_not_bound",
+              provided_agent_id: agent_id,
+              bound_agent_id: binding.bound_agent_id,
+            },
+          });
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    error: "agent_not_bound",
+                    provided_agent_id: agent_id,
+                    bound_agent_id: binding.bound_agent_id,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
       }
 
       if (ctx.killSwitch.isEnabled()) {
@@ -220,6 +280,7 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
           execution: broadcasted.record.execution,
         },
       });
+      ctx.policyEngine.recordBroadcast();
 
       if (!wait_for_receipt) {
         return {

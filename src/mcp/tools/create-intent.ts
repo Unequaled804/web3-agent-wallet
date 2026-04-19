@@ -26,6 +26,68 @@ export function registerCreateIntent(server: McpServer, ctx: WalletContext) {
     CreateIntentInputShape,
     async (rawInput) => {
       const input = rawInput as CreateIntentInput;
+      const binding = ctx.bindingManager.getState();
+
+      if (binding.bound_agent_id) {
+        if (!input.agent_id) {
+          await ctx.auditStore.logEvent({
+            event_type: "intent_create_blocked",
+            request_id: input.request_id,
+            to_address: input.to,
+            status: "rejected",
+            payload: {
+              error: "agent_id_required_when_bound",
+              bound_agent_id: binding.bound_agent_id,
+            },
+          });
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    error: "agent_id_required_when_bound",
+                    bound_agent_id: binding.bound_agent_id,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+        if (input.agent_id !== binding.bound_agent_id) {
+          await ctx.auditStore.logEvent({
+            event_type: "intent_create_blocked",
+            request_id: input.request_id,
+            to_address: input.to,
+            status: "rejected",
+            payload: {
+              error: "agent_not_bound",
+              provided_agent_id: input.agent_id,
+              bound_agent_id: binding.bound_agent_id,
+            },
+          });
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    error: "agent_not_bound",
+                    provided_agent_id: input.agent_id,
+                    bound_agent_id: binding.bound_agent_id,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+      }
 
       const structuralErrors = validateCreateIntentInput(input);
       if (structuralErrors.length > 0) {
@@ -36,6 +98,7 @@ export function registerCreateIntent(server: McpServer, ctx: WalletContext) {
           payload: {
             errors: structuralErrors,
             input,
+            agent_id: input.agent_id,
           },
           status: "rejected",
         });
@@ -126,6 +189,7 @@ export function registerCreateIntent(server: McpServer, ctx: WalletContext) {
         status: updated.status,
         payload: {
           status_reason: updated.status_reason,
+          agent_id: input.agent_id,
           validation: {
             ok: report.ok,
             checks: report.checks,

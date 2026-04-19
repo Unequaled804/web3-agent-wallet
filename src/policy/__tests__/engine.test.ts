@@ -137,4 +137,80 @@ describe("PolicyEngine", () => {
     expect(result.decision).toBe("rejected");
     expect(result.reason).toBe("recipient_blocklisted");
   });
+
+  it("supports runtime policy updates", () => {
+    const killSwitch = new KillSwitch();
+    const engine = new PolicyEngine(
+      {
+        autoApproveMaxWei: 10n ** 16n,
+        hardMaxWei: 10n ** 17n,
+        allowedTo: new Set(),
+        blockedTo: new Set(),
+      },
+      killSwitch,
+    );
+
+    engine.applyUpdate({
+      auto_approve_max_wei: "1000",
+      hard_max_wei: "2000",
+      allowed_to: ["0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"],
+      max_tx_per_minute: 2,
+      max_tx_per_hour: 10,
+    });
+
+    const snapshot = engine.getConfigSnapshot();
+    expect(snapshot.auto_approve_max_wei).toBe("1000");
+    expect(snapshot.hard_max_wei).toBe("2000");
+    expect(snapshot.allowed_to).toEqual([
+      "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed",
+    ]);
+    expect(snapshot.max_tx_per_minute).toBe(2);
+    expect(snapshot.max_tx_per_hour).toBe(10);
+  });
+
+  it("throws when auto-approve exceeds hard limit", () => {
+    const killSwitch = new KillSwitch();
+    const engine = new PolicyEngine(
+      {
+        autoApproveMaxWei: 10n,
+        hardMaxWei: 100n,
+        allowedTo: new Set(),
+        blockedTo: new Set(),
+      },
+      killSwitch,
+    );
+
+    expect(() =>
+      engine.applyUpdate({
+        auto_approve_max_wei: "1000",
+        hard_max_wei: "999",
+      }),
+    ).toThrow(/cannot exceed hard_max_wei/);
+
+    const snapshot = engine.getConfigSnapshot();
+    expect(snapshot.auto_approve_max_wei).toBe("10");
+    expect(snapshot.hard_max_wei).toBe("100");
+  });
+
+  it("downgrades to pending approval when minute frequency limit is reached", () => {
+    const killSwitch = new KillSwitch();
+    const engine = new PolicyEngine(
+      {
+        autoApproveMaxWei: 10n ** 16n,
+        hardMaxWei: 10n ** 17n,
+        allowedTo: new Set(),
+        blockedTo: new Set(),
+        maxTxPerMinute: 2,
+      },
+      killSwitch,
+    );
+
+    const now = Date.now();
+    engine.recordBroadcast(now - 10_000);
+    engine.recordBroadcast(now - 5_000);
+
+    const result = engine.evaluate(makeIntent(), okValidation);
+    expect(result.decision).toBe("pending_approval");
+    expect(result.reason).toBe("frequency_limit_minute_exceeded");
+  });
 });

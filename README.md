@@ -13,7 +13,7 @@ See [`docs/answers.md`](docs/answers.md) for the full design (user personas, key
 - [x] **M2** — Policy engine + approval queue + kill switch
 - [x] **M3** — Signing & broadcasting (`wallet_execute_intent`)
 - [x] **M4** — Audit log & history query (`wallet_query_history`)
-- [ ] M5 — Session keys, ERC20, UI
+- [x] **M5** — Human control plane: wallet-agent bind/unbind + runtime policy editing (including frequency limits)
 
 ## Prerequisites
 
@@ -72,8 +72,36 @@ Restart Claude Desktop; you should see these tools in the picker:
 | `wallet_get_kill_switch` | Read kill-switch state + policy config | None |
 | `wallet_set_kill_switch` | Engage/release emergency kill switch | Blocks new intents while engaged |
 | `wallet_query_history` | Query persisted audit/history events from SQLite | None |
+| `wallet_get_binding` | Read wallet-agent binding state | None |
+| `wallet_bind_agent` | Bind wallet to a specific `agent_id` | Persists binding state in SQLite |
+| `wallet_unbind_agent` | Remove active binding | Persists binding state in SQLite |
+| `wallet_get_policy` | Read effective policy config + runtime tx counters | None |
+| `wallet_update_policy` | Update thresholds, allow/block lists, frequency limits | Persists policy config in SQLite |
 
 `wallet_create_intent` returns `intent_id`, `human_summary`, and policy status. Intents in `pending_approval` must pass `wallet_review_intent`, then `wallet_execute_intent` performs final preflight checks before signing/broadcasting.
+
+## M5 Human Interaction Model
+
+M5 adds explicit human control surfaces beyond plain natural language prompts:
+
+- Logical interaction:
+  - Bind wallet to a single agent identity (`wallet_bind_agent`).
+  - If bound, both `wallet_create_intent` and `wallet_execute_intent` require matching `agent_id`.
+  - Unbind anytime (`wallet_unbind_agent`) to rotate or revoke authority.
+
+- Operational interaction:
+  - Read policy state (`wallet_get_policy`) and update policy live (`wallet_update_policy`).
+  - Update amount thresholds, allow/block lists, and frequency guardrails (`max_tx_per_minute`, `max_tx_per_hour`).
+  - Policy changes are persisted in SQLite and reloaded when MCP server restarts.
+
+Quick example flow:
+
+1. Bind current agent:
+   - `wallet_bind_agent` with `{ "agent_id": "test-wallet", "actor": "owner" }`
+2. Set frequency limits:
+   - `wallet_update_policy` with `{ "max_tx_per_minute": 5, "max_tx_per_hour": 60, "actor": "owner" }`
+3. Revoke binding:
+   - `wallet_unbind_agent` with `{ "actor": "owner", "reason": "session ended" }`
 
 ## Dev
 
@@ -91,6 +119,7 @@ src/
 ├── intent/       zod schema, static+dynamic validator, humanize, in-memory store
 ├── chain/        viem clients (Sepolia) + eth_call simulator
 ├── policy/       policy engine (thresholds, allow/block list, risk grading)
+├── access/       wallet-agent binding state (bind/unbind)
 ├── approval/     in-memory human approval queue
 ├── killswitch/   emergency stop state
 ├── audit/        SQLite (sql.js) audit log store + history query
@@ -99,4 +128,4 @@ src/
 └── context.ts    shared runtime context (store + policy + queue + audit + kill switch)
 ```
 
-Later milestones will add session-key and ERC20 features.
+See Chinese docs: [`README.zh-CN.md`](README.zh-CN.md)

@@ -24,6 +24,14 @@ const ConfigSchema = z.object({
     .default("200000000000000000"),
   POLICY_ALLOWED_TO: z.string().optional().default(""),
   POLICY_BLOCKED_TO: z.string().optional().default(""),
+  POLICY_MAX_TX_PER_MINUTE: z
+    .string()
+    .regex(/^\d*$/)
+    .default(""),
+  POLICY_MAX_TX_PER_HOUR: z
+    .string()
+    .regex(/^\d*$/)
+    .default(""),
 });
 
 export type AppConfig = {
@@ -35,6 +43,8 @@ export type AppConfig = {
   POLICY_HARD_MAX_WEI: bigint;
   POLICY_ALLOWED_TO: string[];
   POLICY_BLOCKED_TO: string[];
+  POLICY_MAX_TX_PER_MINUTE?: number;
+  POLICY_MAX_TX_PER_HOUR?: number;
 };
 
 function parseAddressList(value: string, keyName: string): string[] {
@@ -52,6 +62,17 @@ function parseAddressList(value: string, keyName: string): string[] {
         );
       }
     });
+}
+
+function parseOptionalPositiveInt(value: string, keyName: string): number | undefined {
+  if (!value.trim()) return undefined;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `Invalid configuration. ${keyName} must be a positive integer when provided.`,
+    );
+  }
+  return parsed;
 }
 
 export function loadConfig(): AppConfig {
@@ -85,6 +106,14 @@ export function loadConfig(): AppConfig {
     POLICY_BLOCKED_TO: parseAddressList(
       config.POLICY_BLOCKED_TO,
       "POLICY_BLOCKED_TO",
+    ),
+    POLICY_MAX_TX_PER_MINUTE: parseOptionalPositiveInt(
+      config.POLICY_MAX_TX_PER_MINUTE,
+      "POLICY_MAX_TX_PER_MINUTE",
+    ),
+    POLICY_MAX_TX_PER_HOUR: parseOptionalPositiveInt(
+      config.POLICY_MAX_TX_PER_HOUR,
+      "POLICY_MAX_TX_PER_HOUR",
     ),
   };
 }

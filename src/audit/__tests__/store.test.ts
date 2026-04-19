@@ -84,4 +84,20 @@ describe("AuditStore", () => {
     expect(rows.length).toBe(1);
     expect(rows[0]?.payload).toMatchObject({ reason: "manual" });
   });
+
+  it("persists wallet settings", async () => {
+    const { store, dbPath } = await setupDb();
+
+    await store.setSetting("policy", {
+      auto_approve_max_wei: "1000",
+      hard_max_wei: "2000",
+    });
+
+    const local = store.getSetting<{ auto_approve_max_wei: string }>("policy");
+    expect(local?.value.auto_approve_max_wei).toBe("1000");
+
+    const reopened = await AuditStore.open(dbPath);
+    const loaded = reopened.getSetting<{ hard_max_wei: string }>("policy");
+    expect(loaded?.value.hard_max_wei).toBe("2000");
+  });
 });

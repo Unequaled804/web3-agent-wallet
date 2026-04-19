@@ -40,6 +40,14 @@ const HexDataSchema = z
  * by {@link validateCreateIntentInput} after parsing.
  */
 export const CreateIntentInputShape = {
+  agent_id: z
+    .string()
+    .min(1)
+    .max(128)
+    .optional()
+    .describe(
+      "Optional caller identity. Required when a wallet binding is active.",
+    ),
   action: z
     .enum(["transfer", "contract_call"])
     .describe(
@@ -88,6 +96,14 @@ export const SimulateIntentInputShape = {
 } as const;
 
 export const ExecuteIntentInputShape = {
+  agent_id: z
+    .string()
+    .min(1)
+    .max(128)
+    .optional()
+    .describe(
+      "Optional caller identity. Required when a wallet binding is active.",
+    ),
   intent_id: z
     .string()
     .min(1)

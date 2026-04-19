@@ -64,6 +64,12 @@ export type QueryAuditInput = {
   to_time?: number;
 };
 
+export type WalletSettingRecord<T> = {
+  key: string;
+  value: T;
+  updated_at: number;
+};
+
 export class AuditStore {
   private constructor(
     private readonly dbPath: string,
@@ -184,6 +190,46 @@ export class AuditStore {
     return this.queryRaw(sql, [...params, limit]);
   }
 
+  getSetting<T>(key: string): WalletSettingRecord<T> | undefined {
+    const result = this.db.exec(
+      "SELECT key, value_json, updated_at FROM wallet_settings WHERE key = ? LIMIT 1",
+      [key],
+    );
+    if (result.length === 0) return undefined;
+    const table = result[0]!;
+    if (table.values.length === 0) return undefined;
+    const row = table.values[0]!;
+    const record = Object.fromEntries(
+      table.columns.map((name, i) => [name, row[i] ?? null]),
+    ) as Record<string, SqlValue>;
+
+    const raw = record.value_json;
+    if (typeof raw !== "string") return undefined;
+
+    try {
+      return {
+        key,
+        value: JSON.parse(raw) as T,
+        updated_at: Number(record.updated_at ?? Date.now()),
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  async setSetting<T>(key: string, value: T): Promise<void> {
+    const now = Date.now();
+    this.db.run(
+      [
+        "INSERT INTO wallet_settings (key, value_json, updated_at)",
+        "VALUES (?, ?, ?)",
+        "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at",
+      ].join("\n"),
+      [key, JSON.stringify(value), now],
+    );
+    await this.flush();
+  }
+
   private queryRaw(sql: string, params: SqlValue[]): AuditEvent[] {
     const result = this.db.exec(sql, params);
     if (result.length === 0) return [];
@@ -257,6 +303,16 @@ export class AuditStore {
     );
     this.db.run(
       "CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_events(event_type)",
+    );
+
+    this.db.run(
+      [
+        "CREATE TABLE IF NOT EXISTS wallet_settings (",
+        "  key TEXT PRIMARY KEY,",
+        "  value_json TEXT NOT NULL,",
+        "  updated_at INTEGER NOT NULL",
+        ")",
+      ].join("\n"),
     );
   }
 

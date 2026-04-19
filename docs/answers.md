@@ -150,4 +150,4 @@ flowchart TD
 1. 使用 Gemini、Claude、ChatGPT 等智能体了解相关 Web3 背景知识（多智能体交叉使用避免幻觉内容误导）
 2. 阅读 ETH 官方文档等文档，观看相关视频，吸收知识后，与上述智能体描述自己总结的内容，以确认是否理解相关概念（同样地，交叉使用避免单个信源幻觉误导，后不再赘述）
 3. 做完产品分析规划以及设计架构后，用上述智能体进行 Review，确认是否符合需求
-4. 使用 Cursor + Opus 4.7/Codex 5.3 和 Trae + Gemini 3.1 Pro 进行分步骤实现
+4. 使用 Cursor + Opus 4.7 & Codex + Codex 5.3 进行分步骤实现，Trae + Gemini 3.1 Pro 做 Code Review 和优化以及 MCP 测试
