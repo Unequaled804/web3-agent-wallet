@@ -1,7 +1,12 @@
 import { config as loadEnv } from "dotenv";
 import { z } from "zod";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-loadEnv();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, "..");
+
+loadEnv({ path: path.resolve(PROJECT_ROOT, ".env"), override: true });
 
 const ConfigSchema = z.object({
   SEPOLIA_RPC_URL: z.string().url(),
@@ -22,5 +27,14 @@ export function loadConfig(): AppConfig {
       `Invalid configuration. Check your .env file:\n${issues}`,
     );
   }
-  return parsed.data;
+  
+  const config = parsed.data;
+  
+  // Resolve paths relative to project root if they are relative
+  const resolvePath = (p: string) => path.isAbsolute(p) ? p : path.resolve(PROJECT_ROOT, p);
+  
+  config.KEYSTORE_PATH = resolvePath(config.KEYSTORE_PATH);
+  config.DB_PATH = resolvePath(config.DB_PATH);
+  
+  return config;
 }
