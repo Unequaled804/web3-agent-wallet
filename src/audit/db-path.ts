@@ -1,15 +1,25 @@
 import path from "node:path";
 import type { Address } from "viem";
 
-export function resolveAuditDbPath(configuredDbPath: string, address: Address): {
+export function resolveAuditDbPath(
+  configuredDbPath: string,
+  address: Address,
+  instanceId = "default",
+): {
   dbPath: string;
   mode: "placeholder" | "auto_wallet_suffix" | "literal";
 } {
   const normalizedAddress = address.toLowerCase();
+  const normalizedInstance = instanceId.toLowerCase();
 
-  if (configuredDbPath.includes("{address}")) {
+  if (
+    configuredDbPath.includes("{address}") ||
+    configuredDbPath.includes("{instance}")
+  ) {
     return {
-      dbPath: configuredDbPath.replaceAll("{address}", normalizedAddress),
+      dbPath: configuredDbPath
+        .replaceAll("{instance}", normalizedInstance)
+        .replaceAll("{address}", normalizedAddress),
       mode: "placeholder",
     };
   }

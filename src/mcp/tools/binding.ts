@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { WalletContext } from "../../context.js";
+import { bindAgent, getBindingState, unbindAgent } from "../../access/service.js";
 
 const BindAgentInputShape = {
   agent_id: z.string().min(1).max(128),
@@ -18,20 +19,12 @@ export function registerGetBinding(server: McpServer, ctx: WalletContext) {
     "wallet_get_binding",
     "Get current wallet-agent binding state.",
     {},
-    async () => ({
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              binding: ctx.bindingManager.getState(),
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-    }),
+    async () => {
+      const payload = await getBindingState(ctx);
+      return {
+        content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+      };
+    },
   );
 }
 
@@ -41,20 +34,7 @@ export function registerBindAgent(server: McpServer, ctx: WalletContext) {
     "Bind this wallet to an agent identity. After binding, wallet_create_intent and wallet_execute_intent require matching agent_id.",
     BindAgentInputShape,
     async ({ agent_id, actor, reason }) => {
-      const before = ctx.bindingManager.getState();
-      const after = ctx.bindingManager.bind({ agent_id, actor });
-
-      await ctx.auditStore.setSetting("binding_state", after);
-      await ctx.auditStore.logEvent({
-        event_type: "agent_bound",
-        status: "applied",
-        payload: {
-          actor,
-          reason,
-          before,
-          after,
-        },
-      });
+      const { before, after } = await bindAgent(ctx, { agent_id, actor, reason });
 
       return {
         content: [
@@ -81,20 +61,7 @@ export function registerUnbindAgent(server: McpServer, ctx: WalletContext) {
     "Remove active wallet-agent binding.",
     UnbindAgentInputShape,
     async ({ actor, reason }) => {
-      const before = ctx.bindingManager.getState();
-      const after = ctx.bindingManager.unbind({ actor, reason });
-
-      await ctx.auditStore.setSetting("binding_state", after);
-      await ctx.auditStore.logEvent({
-        event_type: "agent_unbound",
-        status: "applied",
-        payload: {
-          actor,
-          reason,
-          before,
-          after,
-        },
-      });
+      const { before, after } = await unbindAgent(ctx, { actor, reason });
 
       return {
         content: [

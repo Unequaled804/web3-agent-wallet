@@ -31,6 +31,9 @@ import {
   registerGetBinding,
   registerUnbindAgent,
 } from "./tools/binding.js";
+import { WalletRuntimeManager } from "../runtime/wallet-manager.js";
+import { startConsoleServer } from "../web/console-server.js";
+import { registerGetConsoleUrl } from "./tools/console.js";
 
 // MCP uses stdout for protocol; all human-readable logs go to stderr.
 const log = (...args: unknown[]) => console.error("[wallet]", ...args);
@@ -40,7 +43,11 @@ async function main() {
   const account = await loadAccount(config.KEYSTORE_PATH, config.KEYSTORE_PASSWORD);
   const publicClient = createReadClient(config.SEPOLIA_RPC_URL);
   const walletClient = createSigningClient(config.SEPOLIA_RPC_URL, account);
-  const resolvedDb = resolveAuditDbPath(config.DB_PATH, account.address);
+  const resolvedDb = resolveAuditDbPath(
+    config.DB_PATH,
+    account.address,
+    config.INSTANCE_ID,
+  );
   const auditStore = await AuditStore.open(resolvedDb.dbPath);
   const persistedPolicy = auditStore.getSetting<{
     auto_approve_max_wei?: string;
@@ -100,7 +107,7 @@ async function main() {
 
   const server = new McpServer({
     name: "web3-agent-wallet",
-    version: "0.6.0",
+    version: "0.7.0",
   });
 
   registerGetAddress(server, ctx);
@@ -119,6 +126,11 @@ async function main() {
   registerGetBinding(server, ctx);
   registerBindAgent(server, ctx);
   registerUnbindAgent(server, ctx);
+  registerGetConsoleUrl(server, {
+    enabled: config.WEB_CONSOLE_ENABLED,
+    url: `http://${config.WEB_CONSOLE_HOST}:${config.WEB_CONSOLE_PORT}/`,
+    instance_id: config.INSTANCE_ID,
+  });
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -134,6 +146,18 @@ async function main() {
   log(`connected. address=${account.address} chain=sepolia`);
   if (persistedBinding?.bound_agent_id) {
     log(`active binding restored: ${persistedBinding.bound_agent_id}`);
+  }
+
+  const walletManager = await WalletRuntimeManager.bootstrap(config, ctx);
+  const session = walletManager.getSession();
+  log(
+    `session ready. instance=${config.INSTANCE_ID} wallet=${session.name} address=${session.address}`,
+  );
+
+  if (config.WEB_CONSOLE_ENABLED) {
+    await startConsoleServer({ config, ctx, walletManager, log });
+  } else {
+    log("web console disabled via WEB_CONSOLE_ENABLED=false");
   }
 }
 

@@ -21,4 +21,16 @@ describe("resolveAuditDbPath", () => {
     expect(resolved.mode).toBe("literal");
     expect(resolved.dbPath).toBe("/.wallet/agent-a.db");
   });
+
+  it("expands {instance} and {address} placeholders together", () => {
+    const resolved = resolveAuditDbPath(
+      "/.wallet/{instance}-{address}.db",
+      ADDRESS,
+      "agentA",
+    );
+    expect(resolved.mode).toBe("placeholder");
+    expect(resolved.dbPath).toBe(
+      "/.wallet/agenta-0xe5389a6ee05be4282316daa622be55ed9a632e6c.db",
+    );
+  });
 });
