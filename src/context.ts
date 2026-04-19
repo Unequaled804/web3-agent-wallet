@@ -4,6 +4,7 @@ import type { IntentStore } from "./intent/store.js";
 import type { PolicyEngine } from "./policy/engine.js";
 import type { ApprovalQueue } from "./approval/queue.js";
 import type { KillSwitch } from "./killswitch/state.js";
+import type { AuditStore } from "./audit/store.js";
 
 export type WalletContext = {
   account: PrivateKeyAccount;
@@ -13,4 +14,5 @@ export type WalletContext = {
   policyEngine: PolicyEngine;
   approvalQueue: ApprovalQueue;
   killSwitch: KillSwitch;
+  auditStore: AuditStore;
 };

@@ -16,6 +16,12 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
     async ({ intent_id, wait_for_receipt, receipt_timeout_seconds }) => {
       const record = ctx.intentStore.getRecord(intent_id);
       if (!record) {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_execute_failed",
+          intent_id,
+          status: "rejected",
+          payload: { error: "intent_not_found_or_expired" },
+        });
         return {
           isError: true,
           content: [
@@ -35,6 +41,20 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
       }
 
       if (ctx.killSwitch.isEnabled()) {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_execute_blocked",
+          request_id: record.intent.request_id,
+          intent_id,
+          chain_id: record.intent.chain_id,
+          from_address: record.intent.from,
+          to_address: record.intent.to,
+          value_wei: record.intent.value_wei.toString(),
+          status: "rejected",
+          payload: {
+            error: "kill_switch_engaged",
+            kill_switch: ctx.killSwitch.snapshot(),
+          },
+        });
         return {
           isError: true,
           content: [
@@ -55,6 +75,20 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
       }
 
       if (record.status !== "approved") {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_execute_blocked",
+          request_id: record.intent.request_id,
+          intent_id,
+          chain_id: record.intent.chain_id,
+          from_address: record.intent.from,
+          to_address: record.intent.to,
+          value_wei: record.intent.value_wei.toString(),
+          status: record.status,
+          payload: {
+            error: "intent_not_approved",
+            status_reason: record.status_reason,
+          },
+        });
         return {
           isError: true,
           content: [
@@ -81,6 +115,27 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
       ]);
 
       if (!simulation.success || !validation.ok) {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_execute_precheck_failed",
+          request_id: record.intent.request_id,
+          intent_id,
+          chain_id: record.intent.chain_id,
+          from_address: record.intent.from,
+          to_address: record.intent.to,
+          value_wei: record.intent.value_wei.toString(),
+          status: "rejected",
+          payload: {
+            simulation,
+            validation: {
+              ok: validation.ok,
+              checks: validation.checks,
+              balance_wei: validation.balance_wei?.toString(),
+              estimated_gas: validation.estimated_gas?.toString(),
+              estimated_fee_wei: validation.estimated_fee_wei?.toString(),
+              total_cost_wei: validation.total_cost_wei?.toString(),
+            },
+          },
+        });
         return {
           isError: true,
           content: [
@@ -118,6 +173,20 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
 
       const broadcasted = ctx.intentStore.markBroadcasted({ intent_id, tx_hash });
       if (!broadcasted.ok) {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_broadcast_failed",
+          request_id: record.intent.request_id,
+          intent_id,
+          chain_id: record.intent.chain_id,
+          from_address: record.intent.from,
+          to_address: record.intent.to,
+          value_wei: record.intent.value_wei.toString(),
+          status: "rejected",
+          tx_hash,
+          payload: {
+            error: broadcasted.error,
+          },
+        });
         return {
           isError: true,
           content: [
@@ -136,6 +205,21 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
           ],
         };
       }
+
+      await ctx.auditStore.logEvent({
+        event_type: "intent_broadcasted",
+        request_id: record.intent.request_id,
+        intent_id,
+        chain_id: record.intent.chain_id,
+        from_address: record.intent.from,
+        to_address: record.intent.to,
+        value_wei: record.intent.value_wei.toString(),
+        status: broadcasted.record.status,
+        tx_hash,
+        payload: {
+          execution: broadcasted.record.execution,
+        },
+      });
 
       if (!wait_for_receipt) {
         return {
@@ -171,6 +255,27 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
           success: receipt.status === "success",
         });
 
+        await ctx.auditStore.logEvent({
+          event_type: "intent_confirmed",
+          request_id: record.intent.request_id,
+          intent_id,
+          chain_id: record.intent.chain_id,
+          from_address: record.intent.from,
+          to_address: record.intent.to,
+          value_wei: record.intent.value_wei.toString(),
+          status: receipt.status === "success" ? "confirmed" : "reverted",
+          tx_hash,
+          payload: {
+            receipt: {
+              status: receipt.status,
+              block_number: receipt.blockNumber.toString(),
+              gas_used: receipt.gasUsed.toString(),
+            },
+            store_update_ok: confirmed.ok,
+            store_update_error: confirmed.ok ? undefined : confirmed.error,
+          },
+        });
+
         return {
           isError: !confirmed.ok || receipt.status !== "success",
           content: [
@@ -201,6 +306,20 @@ export function registerExecuteIntent(server: McpServer, ctx: WalletContext) {
           ],
         };
       } catch (err) {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_receipt_wait_failed",
+          request_id: record.intent.request_id,
+          intent_id,
+          chain_id: record.intent.chain_id,
+          from_address: record.intent.from,
+          to_address: record.intent.to,
+          value_wei: record.intent.value_wei.toString(),
+          status: "broadcasted",
+          tx_hash,
+          payload: {
+            error: err instanceof Error ? err.message : String(err),
+          },
+        });
         return {
           isError: true,
           content: [

@@ -16,6 +16,18 @@ export function registerReviewIntent(server: McpServer, ctx: WalletContext) {
     ReviewIntentInputShape,
     async ({ intent_id, decision, reviewer, reason }) => {
       if (decision === "approve" && ctx.killSwitch.isEnabled()) {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_review_blocked",
+          intent_id,
+          status: "rejected",
+          payload: {
+            decision,
+            reviewer,
+            reason,
+            error: "kill_switch_engaged_cannot_approve",
+            kill_switch: ctx.killSwitch.snapshot(),
+          },
+        });
         return {
           isError: true,
           content: [
@@ -43,6 +55,17 @@ export function registerReviewIntent(server: McpServer, ctx: WalletContext) {
       });
 
       if (!applied.ok) {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_review_failed",
+          intent_id,
+          status: "rejected",
+          payload: {
+            decision,
+            reviewer,
+            reason,
+            error: applied.error,
+          },
+        });
         return {
           isError: true,
           content: [
@@ -62,6 +85,21 @@ export function registerReviewIntent(server: McpServer, ctx: WalletContext) {
       }
 
       ctx.approvalQueue.dequeue(intent_id);
+
+      await ctx.auditStore.logEvent({
+        event_type: "intent_reviewed",
+        request_id: applied.record.intent.request_id,
+        intent_id,
+        chain_id: applied.record.intent.chain_id,
+        from_address: applied.record.intent.from,
+        to_address: applied.record.intent.to,
+        value_wei: applied.record.intent.value_wei.toString(),
+        status: applied.record.status,
+        payload: {
+          status_reason: applied.record.status_reason,
+          review: applied.record.review,
+        },
+      });
 
       return {
         content: [

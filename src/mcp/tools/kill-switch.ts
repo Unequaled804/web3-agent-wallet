@@ -42,6 +42,17 @@ export function registerSetKillSwitch(server: McpServer, ctx: WalletContext) {
           ? ctx.killSwitch.engage(reason, actor)
           : ctx.killSwitch.release(actor, reason);
 
+      await ctx.auditStore.logEvent({
+        event_type: "kill_switch_changed",
+        status: snapshot.enabled ? "engaged" : "released",
+        payload: {
+          action,
+          reason,
+          actor,
+          snapshot,
+        },
+      });
+
       return {
         content: [
           {

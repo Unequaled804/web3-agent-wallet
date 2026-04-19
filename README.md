@@ -12,7 +12,7 @@ See [`docs/answers.md`](docs/answers.md) for the full design (user personas, key
 - [x] **M1** — Intent layer: structured Intent, static+dynamic validation, human summary, eth_call simulation
 - [x] **M2** — Policy engine + approval queue + kill switch
 - [x] **M3** — Signing & broadcasting (`wallet_execute_intent`)
-- [ ] M4 — Audit log & history query
+- [x] **M4** — Audit log & history query (`wallet_query_history`)
 - [ ] M5 — Session keys, ERC20, UI
 
 ## Prerequisites
@@ -33,6 +33,7 @@ pnpm build              # compile TypeScript
 Edit `.env`:
 - `SEPOLIA_RPC_URL` — your RPC endpoint
 - `KEYSTORE_PASSWORD` — strong password for encrypting the keystore
+- `DB_PATH` — SQLite audit DB path. If left as `./.wallet/wallet.db`, the server auto-isolates per wallet address (e.g. `wallet-e5389a6e.db`) to avoid multi-agent conflicts.
 
 > **Security note:** This is a demo. The keystore is a local AES-GCM encrypted JSON file with the password read from `.env`. Production deployments must use HSM / MPC / AA + secrets manager.
 
@@ -70,6 +71,7 @@ Restart Claude Desktop; you should see these tools in the picker:
 | `wallet_execute_intent` | Sign+broadcast an `approved` intent; can wait for receipt | Broadcasts transaction on Sepolia |
 | `wallet_get_kill_switch` | Read kill-switch state + policy config | None |
 | `wallet_set_kill_switch` | Engage/release emergency kill switch | Blocks new intents while engaged |
+| `wallet_query_history` | Query persisted audit/history events from SQLite | None |
 
 `wallet_create_intent` returns `intent_id`, `human_summary`, and policy status. Intents in `pending_approval` must pass `wallet_review_intent`, then `wallet_execute_intent` performs final preflight checks before signing/broadcasting.
 
@@ -91,9 +93,10 @@ src/
 ├── policy/       policy engine (thresholds, allow/block list, risk grading)
 ├── approval/     in-memory human approval queue
 ├── killswitch/   emergency stop state
+├── audit/        SQLite (sql.js) audit log store + history query
 ├── signer/       encrypted keystore
 ├── config.ts     env loading via zod
-└── context.ts    shared runtime context (store + policy + queue + kill switch)
+└── context.ts    shared runtime context (store + policy + queue + audit + kill switch)
 ```
 
-Later milestones will add `audit/`, `execution/`, and session-key features.
+Later milestones will add session-key and ERC20 features.

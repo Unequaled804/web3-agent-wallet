@@ -29,6 +29,16 @@ export function registerCreateIntent(server: McpServer, ctx: WalletContext) {
 
       const structuralErrors = validateCreateIntentInput(input);
       if (structuralErrors.length > 0) {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_create_rejected_input",
+          request_id: input.request_id,
+          to_address: input.to,
+          payload: {
+            errors: structuralErrors,
+            input,
+          },
+          status: "rejected",
+        });
         return {
           isError: true,
           content: [
@@ -71,6 +81,16 @@ export function registerCreateIntent(server: McpServer, ctx: WalletContext) {
       );
 
       if (!updated) {
+        await ctx.auditStore.logEvent({
+          event_type: "intent_create_store_miss",
+          request_id: record.intent.request_id,
+          intent_id: record.intent.intent_id,
+          chain_id: record.intent.chain_id,
+          from_address: record.intent.from,
+          to_address: record.intent.to,
+          value_wei: record.intent.value_wei.toString(),
+          status: "rejected",
+        });
         return {
           isError: true,
           content: [
@@ -94,6 +114,29 @@ export function registerCreateIntent(server: McpServer, ctx: WalletContext) {
       } else {
         ctx.approvalQueue.dequeue(updated.intent.intent_id);
       }
+
+      await ctx.auditStore.logEvent({
+        event_type: "intent_created",
+        request_id: updated.intent.request_id,
+        intent_id: updated.intent.intent_id,
+        chain_id: updated.intent.chain_id,
+        from_address: updated.intent.from,
+        to_address: updated.intent.to,
+        value_wei: updated.intent.value_wei.toString(),
+        status: updated.status,
+        payload: {
+          status_reason: updated.status_reason,
+          validation: {
+            ok: report.ok,
+            checks: report.checks,
+            balance_wei: report.balance_wei?.toString(),
+            estimated_gas: report.estimated_gas?.toString(),
+            estimated_fee_wei: report.estimated_fee_wei?.toString(),
+            total_cost_wei: report.total_cost_wei?.toString(),
+          },
+          policy: updated.policy,
+        },
+      });
 
       const payload = {
         intent_id: updated.intent.intent_id,

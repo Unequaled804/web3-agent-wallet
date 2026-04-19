@@ -6,6 +6,8 @@ import { createReadClient, createSigningClient } from "../chain/client.js";
 import { loadAccount } from "../signer/keystore.js";
 import type { WalletContext } from "../context.js";
 import { IntentStore } from "../intent/store.js";
+import { AuditStore } from "../audit/store.js";
+import { resolveAuditDbPath } from "../audit/db-path.js";
 import { PolicyEngine } from "../policy/engine.js";
 import { ApprovalQueue } from "../approval/queue.js";
 import { KillSwitch } from "../killswitch/state.js";
@@ -21,6 +23,7 @@ import {
 } from "./tools/kill-switch.js";
 import { registerGetIntentStatus } from "./tools/get-intent-status.js";
 import { registerExecuteIntent } from "./tools/execute-intent.js";
+import { registerQueryHistory } from "./tools/query-history.js";
 
 // MCP uses stdout for protocol; all human-readable logs go to stderr.
 const log = (...args: unknown[]) => console.error("[wallet]", ...args);
@@ -30,6 +33,8 @@ async function main() {
   const account = await loadAccount(config.KEYSTORE_PATH, config.KEYSTORE_PASSWORD);
   const publicClient = createReadClient(config.SEPOLIA_RPC_URL);
   const walletClient = createSigningClient(config.SEPOLIA_RPC_URL, account);
+  const resolvedDb = resolveAuditDbPath(config.DB_PATH, account.address);
+  const auditStore = await AuditStore.open(resolvedDb.dbPath);
 
   const intentStore = new IntentStore();
   const killSwitch = new KillSwitch();
@@ -51,11 +56,12 @@ async function main() {
     policyEngine,
     approvalQueue,
     killSwitch,
+    auditStore,
   };
 
   const server = new McpServer({
     name: "web3-agent-wallet",
-    version: "0.4.0",
+    version: "0.5.0",
   });
 
   registerGetAddress(server, ctx);
@@ -68,9 +74,18 @@ async function main() {
   registerSetKillSwitch(server, ctx);
   registerGetIntentStatus(server, ctx);
   registerExecuteIntent(server, ctx);
+  registerQueryHistory(server, ctx);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  if (resolvedDb.mode === "auto_wallet_suffix") {
+    log(
+      `DB_PATH=${config.DB_PATH} looked shared; auto-isolated audit db by wallet address: ${resolvedDb.dbPath}`,
+    );
+  } else if (resolvedDb.mode === "placeholder") {
+    log(`audit db path resolved from placeholder: ${resolvedDb.dbPath}`);
+  }
 
   log(`connected. address=${account.address} chain=sepolia`);
 }
