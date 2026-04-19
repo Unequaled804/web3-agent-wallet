@@ -9,7 +9,7 @@ See [`docs/answers.md`](docs/answers.md) for the full design (user personas, key
 ## Status
 
 - [x] **M0** — MCP server skeleton, encrypted keystore, `wallet_get_address`, `wallet_get_balance`
-- [ ] M1 — Intent layer (structured intent, validation, humanize, simulation)
+- [x] **M1** — Intent layer: structured Intent, static+dynamic validation, human summary, eth_call simulation
 - [ ] M2 — Policy engine + approval queue + kill switch
 - [ ] M3 — Signing & broadcasting
 - [ ] M4 — Audit log & history query
@@ -56,7 +56,16 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop; you should see `wallet_get_address` and `wallet_get_balance` in the tool picker.
+Restart Claude Desktop; you should see four tools in the picker:
+
+| Tool | Purpose | Side effects |
+| --- | --- | --- |
+| `wallet_get_address` | Wallet EOA address | None |
+| `wallet_get_balance` | Sepolia ETH balance | None |
+| `wallet_create_intent` | Propose a transaction with explicit amount+unit; validates checksum, balance, gas | None (no signature) |
+| `wallet_simulate_intent` | Dry-run a stored intent via `eth_call` | None |
+
+`wallet_create_intent` returns an `intent_id` plus a `human_summary` that the Agent should read back to the user. Signing and broadcasting land in M3.
 
 ## Dev
 
@@ -71,10 +80,11 @@ pnpm test
 ```
 src/
 ├── mcp/          MCP server + tool definitions
-├── chain/        viem clients (Sepolia)
+├── intent/       zod schema, static+dynamic validator, humanize, in-memory store
+├── chain/        viem clients (Sepolia) + eth_call simulator
 ├── signer/       encrypted keystore
 ├── config.ts     env loading via zod
-└── context.ts    shared runtime context (account + public client)
+└── context.ts    shared runtime context (account + public client + intent store)
 ```
 
-Later milestones will add `intent/`, `policy/`, `audit/`, `approval/`, `killswitch/`.
+Later milestones will add `policy/`, `audit/`, `approval/`, `killswitch/`.
