@@ -1,0 +1,33 @@
+{
+  "name": "web3-agent-wallet",
+  "version": "0.1.0",
+  "description": "MCP-based AI Agent wallet for Sepolia",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "web3-agent-wallet": "dist/mcp/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/mcp/server.ts",
+    "start": "node dist/mcp/server.js",
+    "keystore:create": "tsx src/scripts/create-keystore.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "dotenv": "^16.4.5",
+    "viem": "^2.21.45",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
